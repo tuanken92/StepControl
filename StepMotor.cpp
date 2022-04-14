@@ -236,16 +236,18 @@ void StepMotor::pulseMotor(int pin, double time_delay)
   //  Serial.println("runByPulse -> pin = " + String(pin) + ", delay = " + String(time_delay));
   //#endif
   digitalWrite(pin, HIGH);
-  delayMicroseconds(time_delay);
+  delayMicroseconds(time_delay/2);
   digitalWrite(pin, LOW);
+  delayMicroseconds(time_delay/2);
 }
 
 /*Motor Leadshine*/
 void StepMotor::pulseMotor(double time_delay)
 {
   digitalWrite(pin_pulse, HIGH);
-  delayMicroseconds(time_delay);
+  delayMicroseconds(time_delay/2);
   digitalWrite(pin_pulse, LOW);
+  delayMicroseconds(time_delay/2);
 }
 
 void StepMotor::changeMotorDirection(int dir)
