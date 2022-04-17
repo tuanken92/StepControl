@@ -8,10 +8,16 @@
 #include "DefSystem.h"
 #include "StringSplitter.h"
 #include "StepMotor.h"
-#include <TimerOne.h>
+#include <SimpleKalmanFilter.h>
+
 
 StringSplitter *splitter;
 StepMotor *stepMotor;
+SimpleKalmanFilter simpleKalmanFilter(2, 2, 0.01);
+// Serial output refresh time
+const long SERIAL_REFRESH_TIME = 100;
+long refresh_time;
+
 
 String inputString = "";         // a String to hold incoming data
 bool stringComplete = false;  // whether the string is complete
@@ -26,38 +32,61 @@ double motor_num_pulse = 1;
 double motor_num_degree = 1;
 double motor_num_revolution = 1;
 double motor_rpm = 30;
+double adc_speed = 0;
 
 double RevTest = 1;
+double nPulseRun = 0;
+bool runForever = false;
+
+
 void setup() {
   // initialize serial:
   Serial.begin(9600);
-  // reserve 200 bytes for the inputString:
-  //inputString.reserve(200);
 
+  inputString.reserve(200);   // reserve 200 bytes for the inputString:
+  pinMode(LED_BUILTIN, OUTPUT);
 
-  stepMotor = new StepMotor(MD5_HD14);
-  stepMotor->initVar();
-  //Timer1.initialize(390);         // initialize timer1 with T=120us
-  //Timer1.pwm(9, 712);             // setup pwm on pin 9, 50% duty cycle
-  //Timer1.attachInterrupt(callback);  // attaches callback() as a timer overflow interrupt
+  stepMotor = new StepMotor(DM542_05);
+  splitter = new StringSplitter();
+
+  Timer1.initialize(390);         // initialize timer1 with T=120us
+  Timer1.attachInterrupt(callback);  // attaches callback() as a timer overflow interrupt
 }
 
 void loop() {
+  adcSpeed();
   processCommand();
   processMotor();
-  
+
 }
 
 //int i  = 0;
-//void callback()
-//{
-//  
-//  if(i<=100){
-//    Serial.println("Calculator -> i (us) = " + String(i));
-//    i++;
-//  }
-//    
-//}
+void callback()
+{
+
+
+
+  if (runForever)
+    return;
+
+#ifndef DEBUG
+  Serial.println("runForever = " + String(runForever));
+
+#endif
+
+  if (nPulseRun >= 0)
+  {
+    nPulseRun --;
+    if (nPulseRun == 0)
+    {
+      stepMotor->stopMotor();
+    }
+  }
+  //  else
+  //  {
+  //    stepMotor->stopMotor();
+  //  }
+}
 void processMotor()
 {
   switch (mode_process)
@@ -66,48 +95,96 @@ void processMotor()
       break;
 
     case eMain_Change_direction:
-      stepMotor->runByRevolution(RevTest, motor_direction);
+      delay(1000);
+      nPulseRun = stepMotor->runByRevolution(RevTest, motor_direction);
       mode_process = eMain_Do_nothing;
       break;
 
     case eMain_Run_pulse:
-      stepMotor->runByPulse(motor_num_pulse, motor_direction);
+      nPulseRun = stepMotor->runByPulse(motor_num_pulse, motor_direction);
       mode_process = eMain_Do_nothing;
       break;
 
     case eMain_Run_degree:
-      stepMotor->runByDegree(motor_num_degree, motor_direction);
+      nPulseRun = stepMotor->runByDegree(motor_num_degree, motor_direction);
       mode_process = eMain_Do_nothing;
       break;
 
     case eMain_Run_revolution:
-      stepMotor->runByRevolution(motor_num_revolution, motor_direction);
+      if (motor_num_revolution < 0)
+      {
+        runForever = true;
+      }
+      else
+      {
+        runForever = false;
+      }
+      nPulseRun = stepMotor->runByRevolution(motor_num_revolution, motor_direction);
       mode_process = eMain_Do_nothing;
       break;
 
 
     case eMain_Change_speed:
       stepMotor->setMotorSpeed(motor_rpm);
-      stepMotor->runByRevolution(RevTest, motor_direction);
+      nPulseRun = stepMotor->runByRevolution(RevTest, motor_direction);
       mode_process = eMain_Do_nothing;
       break;
 
-    case eMain_Change_speed_adc:
-      stepMotor->setMotorSpeed(motor_rpm);
-      stepMotor->runByRevolution(RevTest, motor_direction);
-      mode_process = eMain_Do_nothing;
-      break;
 
     case eMain_Change_resolution:
       stepMotor->setResolution(motor_microstep);
-      stepMotor->runByRevolution(RevTest, motor_direction);
+      nPulseRun = stepMotor->runByRevolution(RevTest, motor_direction);
       mode_process = eMain_Do_nothing;
       break;
 
   }
 }
 
+bool enbaleADCSpeed = true;
 
+void adcSpeed()
+{
+  if (!enbaleADCSpeed)
+    return;
+
+  // read a reference value from A0 and map it from 0 to 100
+  float real_value = analogRead(A0) / 1024.0 * 100.0;
+  // calculate the estimated value with Kalman Filter
+  adc_speed = simpleKalmanFilter.updateEstimate(real_value) / 100 * stepMotor->getMaxSpeed();
+
+
+#ifndef DEBUG
+  Serial.println("adc_speed = " + String(adc_speed));
+
+#endif
+
+
+  if (motor_rpm >= adc_speed - offset && motor_rpm <= adc_speed + offset)
+  {
+    //do nothing
+    //keep old speed
+
+#ifndef DEBUG
+    Serial.println("adc_speed = " + String(adc_speed));
+    Serial.println("eMain_Change_speed_adc, keep = " + String(motor_rpm));
+#endif
+  }
+  else
+  {
+    //update speed
+    motor_rpm = adc_speed;
+    stepMotor->setMotorSpeed(motor_rpm);
+
+    Serial.println("mode_process = " + String(mode_process));
+
+    runForever = true;
+
+    nPulseRun = stepMotor->runByPulse(RevTest, motor_direction);
+
+
+  }
+
+}
 
 void processCommand()
 {
@@ -122,7 +199,7 @@ void processCommand()
 
   // mode_param1_param2_..._paramn\n
   // split data
-  splitter = new StringSplitter(inputString, '_', 3);  // new StringSplitter(string_to_split, delimiter, limit)
+  splitter->SplitString(inputString, '_', 3);  // new StringSplitter(string_to_split, delimiter, limit)
   int itemCount = splitter->getItemCount();
   if (itemCount == 0)
   {
@@ -148,12 +225,13 @@ void processCommand()
     int dir = splitter->getItemAtIndex(1).toInt();
     motor_direction = dir;
 #ifdef DEBUG
-    Serial.println("motor_direction = CCW -> " +  String(motor_direction));
+    Serial.println("motor_direction = " +  String(motor_direction));
 #endif
 
-  }
+  }//end chieu quay
+  
   //che do quay
-  else if (cmd_item.equalsIgnoreCase(RUN))
+  if (cmd_item.equalsIgnoreCase(RUN))
   {
     //quay n xung
     if (splitter->getItemAtIndex(1).equalsIgnoreCase(RUN_PULSE))
@@ -184,49 +262,41 @@ void processCommand()
       Serial.println("eMain_Run_revolution = " + String(motor_num_revolution));
 #endif
     }
-  }
+
+
+
+  }//end---che do quay
 
   //toc do quay
-  else if (cmd_item.equalsIgnoreCase(SPEED))
+  if (cmd_item.equalsIgnoreCase(SPEED))
   {
     mode_process = eMain_Change_speed;
     motor_rpm = splitter->getItemAtIndex(1).toDouble();
-    
+
 #ifdef DEBUG
     Serial.println("eMain_Change_speed = " + String(motor_rpm));
 #endif
-  }
-
-  //toc do quay theo adc
-  else if (cmd_item.equalsIgnoreCase(SPEED_ADC))
-  {
-    mode_process = eMain_Change_speed_adc;
-    motor_rpm = splitter->getItemAtIndex(1).toDouble();
-    
-#ifdef DEBUG
-    Serial.println("eMain_Change_speed_adc = " + String(motor_rpm));
-#endif
-  }
+  }//end - toc do quay
 
   //thay doi do phan giai
-  else if (cmd_item.equalsIgnoreCase(RESOLUTION))
+  if (cmd_item.equalsIgnoreCase(RESOLUTION))
   {
     mode_process = eMain_Change_resolution;
     motor_microstep = splitter->getItemAtIndex(1).toDouble();
-    
+
 #ifdef DEBUG
     Serial.println("eMain_Change_resolution = " + String(motor_microstep) + " - microstep");
 #endif
-  }
-  
+  }//end do phan giai
+
   //cac truong hop khac
-  else
-  {
-      mode_process = eMain_Do_nothing;
-#ifdef DEBUG
-    Serial.println("mode_process = eMain_Do_nothing");
-#endif      
-  }
+//  else
+//  {
+//    mode_process = eMain_Do_nothing;
+//#ifdef DEBUG
+//    Serial.println("mode_process = eMain_Do_nothing");
+//#endif
+//  }
 
   clear_buffer();
 
@@ -238,8 +308,8 @@ void clear_buffer()
   // clear the string:
   inputString = "";
   stringComplete = false;
-  delete splitter;
-  splitter = NULL;
+  //delete splitter;
+  //splitter = NULL;
 
 }
 /*
@@ -250,6 +320,7 @@ void clear_buffer()
 void serialEvent() {
   //stepMotor->enableRun = false;
   while (Serial.available()) {
+    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
     //
     // get the new byte:
     char inChar = (char)Serial.read();
@@ -258,7 +329,7 @@ void serialEvent() {
     // if the incoming character is a newline, set a flag so the main loop can
     // do something about it:
     if (inChar == '\n') {
-      
+
       stringComplete = true;
       mode_process = eMain_Do_nothing;
     }

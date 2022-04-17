@@ -7,18 +7,20 @@
 #ifndef StringSplitter_h
 #define StringSplitter_h
 
-class StringSplitter{
-	private:
-		static const unsigned int MAX = 5;
-		String op[MAX];
-		int count = 0;
-		int countOccurencesOfChar(String s, char c);
+class StringSplitter
+{
+private:
+	static const unsigned int MAX = 5;
+	String op[MAX];
+	int count = 0;
+	int countOccurencesOfChar(String s, char c);
 
-	public:
-		StringSplitter(String s, char c, unsigned int l);		
-    ~StringSplitter();
-		int getItemCount();
-		String getItemAtIndex(int index);
+public:
+	StringSplitter();
+	~StringSplitter();
+	void SplitString(String s, char c, unsigned int l);
+	int getItemCount();
+	String getItemAtIndex(int index);
 };
 
 #endif

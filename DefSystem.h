@@ -1,6 +1,6 @@
 #ifndef DEFSYSTEM_H
 #define DEFSYSTEM_H
-
+#include <TimerOne.h>
 /*atk*/
 #define DEBUG true
 
@@ -13,9 +13,11 @@
 #define RUN_PULSE "pulse"
 #define RUN_DEGREE "degree"
 #define RUN_REVOLUTION "rev"
+#define RUN_ADC "adc"
+
 
 #define SPEED "speed"
-#define SPEED_ADC "speed-adc"
+#define SPEED_ADC "tuanna"
 
 
 #define RESOLUTION "resolution"
@@ -48,6 +50,7 @@ enum EMainProcess
   eMain_Run_pulse,           //Run by pulse -> then stop
   eMain_Run_degree,          //Run by degree -> then stop
   eMain_Run_revolution,      //Run by revolution -> then stop
+  eMain_Run_adc,              //Run with speed by adc
   eMain_Run_forever,         //Run forever
   eMain_Run_hold,             //Run mode hold - like stop
   
@@ -69,8 +72,9 @@ const int PIN_DIRECTION = 6;
 const int PIN_ENABLE = 5;
 const int PIN_HOLD = 4;
 const int PIN_DIVISION_SELECT = 3;
-
-
+const int duty = 512;
+const int offset = 3;
+const int analogInPin = A0;
 //__________________________________________________________________________                    
 // OUTPUT DEFINE  
 //__________________________________________________________________________
