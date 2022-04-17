@@ -203,12 +203,10 @@ double StepMotor::runByRevolution(double nRev, int dir)
 }
 
 
-
 void StepMotor::changeMotorDirection(int dir)
 {
   Timer1.disablePwm(pin_dir);
-  
-  //stopMotor();
+
   switch (dir)
   {
     case CW:
